@@ -1,61 +1,97 @@
+
 import hashlib
 
-class info_pacote(object):
-	"""
-	Organiza os dados do pacote
 
-	"""
-	def __init__(self,size,code,right,data):
+def encrypt_string(data):
+	hash_string=str(data)
+	sha_signature = hashlib.sha256(hash_string.encode()).hexdigest()
+	sha=sha_signature[:4]
+	int_sha=int(sha,16)
+	sha_final=int_sha.to_bytes(2,"big")
+	return sha_final
+
+class info_pacote(object):
+
+	def __init__(self,size,file_size,code,right,data,overhead):
+
 		self.pack_size=size
+		self.file_size=file_size
 		self.encrypt_code=code
 		self.right=right
 		self.data=data
+		self.overhead=overhead
+
+class info_all_packs(object):
+
+	def __init__(self):
+		self.total_packs=0
+		self.packs={}
+		self.last_pack=0
+
+
+	def insert_pack(self,pacot):
+		pack=pacote()
+		info_packs,total_packs,this_pack=pack.ler_pacotes(pacot)
+
+		if (not self.packs) and (this_pack==1) and info_packs.right:
+			# print("Recebido primeiro pacote")
+			self.last_pack+=1
+			self.total_packs=total_packs
+			self.packs[this_pack]=info_packs
+
+			return True
+
+		elif (this_pack==self.last_pack+1) and info_packs.right and (total_packs==self.total_packs) and (self.last_pack<self.total_packs):
+			# print(self.last_pack)
+			# print("Recebido pacote de número:{}".format(this_pack))
+			self.packs[this_pack]=info_packs
+			self.last_pack+=1
+		else:
+			# print("Erro ao receber pacotes")
+			pass
+
+	def full_data(self):
+		if self.last_pack==self.total_packs:
+			dat=b''
+			for i in self.packs:
+				dat+=self.packs[i].data
+			return dat
+		else:
+			# print("não chegaram todos os pacotes")
+			pass
+
 
 
 class pacote(object):
 
 	def __init__(self):
-		"""
-		Informações inciais referentes ao pacote, sendo: 
-		ep = \xf1\xf2\xf3\xf4
-		bs = \x00\xf1\x00\xf2\x00\xf3\x00\xf4
-
-		"""
 		self.head_size = 14
+		self.eop_size=4
 		self.max_size = 128
 		ep=4059231220
 		bs=67836508785279220
 		self.eop = ep.to_bytes(4,"big")
 		self.bytes_stuffing=bs.to_bytes(8,"big")
+		self.payload=128
 
-		# Head variables
-		self.max_pack_size = 4
+
+		# head variables
+		self.max_pack_size = 1
 		self.max_code_size = 2
-
-	######################
-	# Funções Auxiliares #
-	######################
+		self.max_total_packs_size=2
+		self.this_pack_number_size=2
 
 	def find_eop(self,data):
-		"""
-		Encontra EOP's no meio do código
-		"""
 		for i in range(len(data)):
 			if data[i:i+4]==self.eop:
 				return i
 
 	def find_false_eop(self,data):
-		"""
-		Encontra EOP's tranformados no meio do código
-		"""
 		for i in range(len(data)):
 			if data[i:i+8]==self.bytes_stuffing:
 				return i
 
 	def fix_bytes_stuffing(self,data):
-		"""
-		Converte de EOP's no meio do código para falsos EOP's
-		"""
 		while True:
 			i=self.find_eop(data)
 			if i!=None:
@@ -65,9 +101,6 @@ class pacote(object):
 		return data
 
 	def restore_bytes_stuffing(self,data):
-		"""
-		Converte de falsos EOP's para EOP's no meio do código
-		"""
 		while True:
 			i=self.find_false_eop(data)
 			if i!=None:
@@ -76,68 +109,83 @@ class pacote(object):
 				break
 		return data
 
-	def encrypt_string(self,data):
-		"""
-		Gera um dígito de segunaça
-		"""
-		hash_string=str(data)
-		sha_signature = hashlib.sha256(hash_string.encode()).hexdigest()
-		sha=sha_signature[:4]
-		int_sha=int(sha,16)
-		sha_final=int_sha.to_bytes(2,"big")
-		return sha_final
 
-	######################
-	# Criação de Pacotes #
-	######################
-
-	def head(self,data):
-		"""
-		Head (Soma de toda informação do head)
-
-		"""
-		pack_size = len(data)
+	def head(self,data,total_packs,indice):
+		# tem o tamanho do arquivo mais o eop
+		pack_size=(self.head_size - self.max_pack_size)+len(data)+self.eop_size
+		encrypt_code=encrypt_string(data)
 		size_bytes = pack_size.to_bytes(self.max_pack_size, "big")
-		encrypt_code = self.encrypt_string(data)
-		complement = bytes(self.head_size-self.max_pack_size-self.max_code_size)
-		final_head = size_bytes + complement + encrypt_code
+		total_packs =total_packs.to_bytes(self.max_total_packs_size,"big")
+		indice = indice.to_bytes(self.this_pack_number_size,"big")
+
+
+		complement = bytes(self.head_size-self.max_pack_size-self.max_code_size-self.max_total_packs_size-self.this_pack_number_size)
+		final_head=size_bytes+total_packs+indice+complement+encrypt_code
+
 		return final_head
 
-	def empacotar(self,data):
-		"""
-		1- Conserta o código caso haja um EOP no meio do código, substituindo-o por 'bs'
-		2- Junta head + arquivo + EOP
+	def read_head(self,data):
+		
+		size_bytes = int.from_bytes(data[:self.max_pack_size], "big")+self.max_pack_size
+		total_packs = int.from_bytes(data[self.max_pack_size:self.max_pack_size+self.max_total_packs_size], "big")
+		this_pack = int.from_bytes(data[self.max_pack_size+self.max_total_packs_size:self.max_pack_size+self.max_total_packs_size+self.this_pack_number_size], "big")
+		encrypt = data[self.head_size-self.max_code_size:]
 
-		"""
+		return size_bytes,encrypt,total_packs,this_pack
+
+
+	def empacotar(self,data,total_packs,indice):
 		data=self.fix_bytes_stuffing(data)
-		self.pack=self.head(data) + data + self.eop
+		self.pack=self.head(data,total_packs,indice)+data+self.eop
+
 		return self.pack
 
-	######################
-	# Leitura de Pacotes #
-	######################
-
-	def read_head(self,data):
-		"""
-		Lê os arquivos correspondentes ao head, 
-		por meio de splits de posições estratégicas
-
-		"""
-		size_bytes = int.from_bytes(data[:self.max_pack_size], "big")
-		encrypt = data[self.head_size-self.max_code_size:]
-		return size_bytes, encrypt
-
 	def ler_pacotes(self,pacote):
-		"""
-		1- Procura por EOP's no código
-		2- Procura por falsos EOP's sinalizados no código e os converte em código normal
-		3- Vê se a encriptografia está correta
-		4- Retorna um info_pacote
 
-		"""
-		size_bytes, encrypt = self.read_head(pacote[:self.head_size])
-		eop_i = self.find_eop(pacote)
-		data = self.restore_bytes_stuffing(pacote[self.head_size:eop_i])
+
+		size_bytes, encrypt, total_packs, this_pack= self.read_head(pacote[:self.head_size])
+
+		eop_i=self.find_eop(pacote)
+
+		data=pacote[self.head_size:eop_i]
+		original=self.restore_bytes_stuffing(data)
+
+		# if self.find_eop(pacote)==(size_bytes-4):
+		# 	print("EOP no lugar certo")
+		# elif self.find_eop(pacote):
+		# 	print(not self.find_eop(pacote), self.find_eop(pacote))
+		# 	print("EOP no lugar errado, o índice é: {}".format(self.find_eop(pacote)))
+		# else:
+		# 	print("EOP não encontrado")
+
+		size_file=len(original)
 		right = (encrypt==encrypt_string(data))
-		info_packs = info_pacote(size_bytes,encrypt,right,data)
-		return info_packs
+		overhead = (size_bytes-self.eop_size-self.head_size+self.max_pack_size)/(size_bytes+self.max_pack_size)
+		info_packs=info_pacote(size_bytes,size_file,encrypt,right,original,overhead)
+
+		return info_packs, total_packs, this_pack
+
+	def full_empacotacao(self,data):
+
+		li=[]
+
+		
+		total_packs=(len(data)//self.payload)+1
+		# print(total_packs)
+
+
+
+		for i in range(0,total_packs):
+			# print(i)
+			indice=i+1
+			# print('\n\n')
+
+			unit_data=data[i*self.payload:(i+1)*self.payload]
+			# print("data:{}".format(unit_data))
+			# print("size:{}".format(len(unit_data)))
+			# print("indice:{}".format(indice))
+
+			li.append(self.empacotar(unit_data,total_packs,indice))
+
+			
+		return li

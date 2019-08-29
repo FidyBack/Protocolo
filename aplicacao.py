@@ -47,33 +47,39 @@ def main():
 
     # Empacota o arquivo de acordo com o protocolo
     pac = pacote()
-    send = pac.empacotar(txBuffer)
-    lenSend = len(send)
-    LenSendByte = lenSend.to_bytes(8,"big")
+    send = pac.full_empacotacao(txBuffer)
 
     # Transmite dados
     start = time.time()
-    com.sendData(LenSendByte)
-    time.sleep(0.01)
-    com.sendData(send)
+    for pacotasso in send:
+        com.sendData(pacotasso)
+        time.sleep(0.1)
 
     # Comparação visual entre as imagens
-    print("-------------------------")
-    print("Imagem Original")
-    print("-------------------------\n")
-    print(txBuffer)
+    # print("\n-------------------------")
+    # print("Imagem Original")
+    # print("-------------------------")
+    # print(txBuffer)
+    # print("\n-------------------------")
+    # print("Imagem Empacotada")
+    # print("-------------------------\n")
+    # print(send)
+    # print("-------------------------\n")
+
     print("\n-------------------------")
-    print("Imagem Empacotada")
-    print("-------------------------\n")
-    print(send)
+    print("Pacote")
     print("-------------------------")
+    print("Quantidade de Pacotes: {}" .format(len(send)))
+    print("-------------------------\n")
 
-    # Recebe confirmacao do tamanho da imagem e converte 
-    lenData, len1 = com.getData(8)
-    size = int.from_bytes(lenData, "big")
+    # Recebe confirmacao do tamanho da imagem e converte
+    encry = encrypt_string(txBuffer) 
+    recencry = com.getData(2)
 
-    print("Tamanho Recebido: {}".format(size))
-    if lenData == LenSendByte:
+    print("\n-------------------------")
+    print("Encriptografia: {}".format(encry))
+    print("Encriptografia Recebida: {}".format(recencry[0]))
+    if encry == recencry[0] :
         print("Dados coerentes")
     else:
         print("Dados incoerentes, tente novamente")
@@ -82,7 +88,7 @@ def main():
     # Encerra e passa dados de comunicação
     final = time.time() - start
     print("Tempo de comunicação: {}".format(final))
-    print("Taxa de Tranferência: {}".format(size/final))
+    print("Taxa de Tranferência: {}".format(len(txBuffer)/final))
     print("-------------------------")
     print("Comunicação encerrada")
     print("-------------------------")
