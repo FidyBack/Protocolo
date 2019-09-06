@@ -56,7 +56,7 @@ def main():
         if t2_info.pack_type == 2 and t2_info.right == True:
             inicia = True
 
-# Inicia a contagem dos pacotes e envia mensagens tipo 3
+# Envia mensagens tipo 3 e espera mensagens tipo 4
     contador = 1
     numPack = len(t3)
 
@@ -64,6 +64,25 @@ def main():
         com.sendData(t3[contador-1])
         timer1 = time.time()
         timer2 = time.time()
+        t4 = pac.recebedor(com)
+        if t4 recebido: #####Arrumar######
+            pass
+        else:
+            if timer1 > 5:
+                com.sendData(t3[contador-1])
+                timer1 = 0
+            if timer2 > 20:
+                t5 = pac.empacotar(tipo = 5)
+                com.sendData(t5)
+                break
+            else:
+                if t6 recebido: #####Arrumar######
+                    corrige cont #####Arrumar######
+                    com.sendData(t3[contador-1])
+                    timer1 = 0
+                    timer2 = 0
+                else:
+                    pass
 
 # Desativa a porta
     com.disable()
